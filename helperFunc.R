@@ -2378,4 +2378,3 @@ obtain_ll = function(test_data, beta_probit, beta_method){
 }
 
 
-
