@@ -1,20 +1,3 @@
-
-# 
-# X: num cells x num genes
-# X = [X1, X2]
-# 
-# X2 -> theta_hat
-# X1 -> cross validation 
-# 
-# likelihood1: CV(X1) without decor using PC, GES, ... theta_hat
-# likelihood2: CV(X1) with decor using PC, GES, ... theta_hat
-# 
-# in first case:
-#   X1 = X11 -> B_hat1,  X12 + B_hat1 + theta_hat -> likelihood1
-# 
-# in second case:
-#   X1 = decor(X11) -> B_hat2,  X12 + B_hat2 + theta_hat -> likelihood2
-# 
 # 
 source("libraries.R")
 source("helperFunc.R")
@@ -55,9 +38,6 @@ sub_grp <- cutree(hc1, h=70)
 sub_grp %>% table()
 length(which(table(sub_grp) > 15))
 sub_grp_subset <- sub_grp[!(sub_grp %in%  which(table(sub_grp) ==1))]
-sub_grp_subset %>% table()
-sub_grp_subset %>% table() %>% max()
-sub_grp_subset %>% length()
 
 #plot(hc1)
 clusters = unique(sub_grp_subset)
@@ -80,7 +60,7 @@ for(i in clusters){
     tot_sample = c(tot_sample, cluster_sample)
   }
 }
-df = USArrests
+
 # discretizing the data
 discretize_data = function(df){
   new_df = df
@@ -153,15 +133,13 @@ background_gene_cov_estimation = function(bgr_gene_df, n = 100, tot_sample, bloc
   return(est_Sigma)
 }
 
-# start from here
 bgr_est_Sigma = background_gene_cov_estimation(bgr_gene_df = othergenes, n = 100, tot_sample = tot_sample, block_sizes = block_sizes)
 
+# Data preparation
 data = df[,c(-1,-2)]
 data = as.matrix(data)
 rownames(data) = 1:dim(data)[1]
 colnames(data) = 1:dim(data)[2]
-
-
 init_epsilon = matrix(0, nrow = nrow(data), ncol = ncol(data))
 
 # Cross validation likelihood by cluster
@@ -171,6 +149,9 @@ CV_likelihood_all = function(data, block_sizes, bgr_Estimated_Sigma){
   likelihood_folds_init_2 = rep(0,length(block_sizes))
   likelihood_folds_concensus_2 = rep(0, length(block_sizes))
   likelihood_folds_concensus_nocov_2 = rep(0, length(block_sizes))
+  likelihood_folds_complete_nocov = rep(0, length(block_sizes))
+  likelihood_folds_complete_cov = rep(0, length(block_sizes))
+  
   for(cluster_number in 1:length(block_sizes)){
     print(cluster_number)
     init_index = (sum(block_sizes[0:(cluster_number-1)]))+1
@@ -228,33 +209,76 @@ CV_likelihood_all = function(data, block_sizes, bgr_Estimated_Sigma){
 
     # Using the initial cpdag and assumption of identity matrix but obtaining the final beta using same method as above
     init_final_beta = beta_est_loop_input_covariance(data = train_data, adj_mat = init_beta, cov_est = diag(nrow(train_data)), init_epsilon = init_epsilon, block_sizes = block_sizes[-cluster_number])[[1]]
-
+    # Under complete graph
+    complete_beta = matrix(1, nrow = nrow(init_beta), ncol = ncol(init_beta)) # put adjacency matrix as 1 for everything
+    complete_final_beta = beta_est_loop_input_covariance(data = train_data, adj_mat = complete_beta, cov_est = diag(nrow(train_data)), init_epsilon = init_epsilon, block_sizes = block_sizes[-cluster_number])[[1]]
 
     # Finding the log likelihood on the test data for cross_validation
     test_est_Sig = Sig_Estimate_DAG_test(X = test_data, beta = conc_final_beta, block_sizes = c(nrow(test_data)))
     conc_ll2 = t_normal_likelihood(testdata = test_data, Sigma_estimate = bgr_Estimated_Sigma[init_index:end_index, init_index:end_index], est_beta = conc_final_beta)
     conc_nocov_ll2 = t_normal_likelihood(testdata = test_data, Sigma_estimate = diag(nrow(test_data)), est_beta = conc_final_beta)
     init_ll2 = t_normal_likelihood(testdata = test_data, Sigma_estimate = diag(nrow(test_data)), est_beta = init_final_beta)
-
+    complete_ll2 = t_normal_likelihood(testdata = test_data, Sigma_estimate = diag(nrow(test_data)), est_beta = complete_final_beta)
+    complete_estsig_ll2 = t_normal_likelihood(testdata = test_data, Sigma_estimate = bgr_Estimated_Sigma[init_index:end_index, init_index:end_index], est_beta = complete_final_beta)
+    
+    
     likelihood_folds_concensus_2[cluster_number] = conc_ll2[1]
     likelihood_folds_concensus_nocov_2[cluster_number] = conc_nocov_ll2[1]
     likelihood_folds_init_2[cluster_number] = init_ll2[1]
+    likelihood_folds_complete_nocov[cluster_number] = complete_ll2[1]
+    likelihood_folds_complete_cov[cluster_number] = complete_estsig_ll2[1]
+    
 
   }
   return(list(
               "init_mvt" = likelihood_folds_init_2,
               "consensus_mvt" = likelihood_folds_concensus_2,
               "consensus_nocov_mvt" = likelihood_folds_concensus_nocov_2,
+              "complete_nocov_mvt" = likelihood_folds_complete_nocov,
+              "complete_cov_mvt" = likelihood_folds_complete_cov,
               "Final_consensus_CPDAG" = concensus_adj_mat))
 }
 
 CV_res = CV_likelihood_all(data = data, block_sizes = block_sizes, bgr_Estimated_Sigma = bgr_est_Sigma)
 
-mvt_data = data.frame(init = CV_res$init_mvt, consensus_ident = CV_res$consensus_nocov_mvt, consensus = CV_res$consensus_mvt)
-boxplot(mvt_data, xlab = "Method", ylab = "Log-Likelihood", main = "Mvt Normal log-likelihood for each method on each fold")
+#mvt_data = data.frame(complete_cov = CV_res$complete_cov_mvt, consensus = CV_res$consensus_mvt)
+#boxplot(mvt_data, xlab = "Method", ylab = "Log-Likelihood", main = "Mvt Normal log-likelihood for each method on each fold")
+#est_cpdag = CV_res$Final_consensus_CPDAG
+#colnames(est_cpdag) = rownames(est_cpdag) = colnames(Xp)
+#est_cpdag[which(est_cpdag != 0)] = 1
+#dat = struc_diff_1_mixed$uncor_Z_list[[9]][[9]][[10]]
+
+#row_centered <- t(apply(dat, 1, function(row) row - mean(row)))
+#row_normalized <- t(apply(row_centered, 1, function(row) row / sd(row)))
+# Compute the row-covariance matrix
+#row_cov_matrix <- (row_normalized %*% t(row_normalized)) / (ncol(dat) - 1)
+
+#true_sig = struc_diff_1_mixed$true_sigma[[9]]
 
 
-est_cpdag = CV_res$Final_consensus_CPDAG
-colnames(est_cpdag) = rownames(est_cpdag) = colnames(Xp)
-
-est_cpdag[which(est_cpdag != 0)] = 1
+#data3 = c(data3, true_sig[true_sig != 0])
+#data4 = c(data4, row_cov_matrix[true_sig != 0])
+# breaks <- pretty(c(data1, data2), n = 20)  # Define common breaks
+# hist3 <- hist(data3, breaks = breaks, plot = FALSE)
+# hist4 <- hist(data4, breaks = breaks, plot = FALSE)
+# 
+# 
+# hist1 <- hist(data1, breaks = breaks, plot = FALSE)
+# hist2 <- hist(data2, breaks = breaks, plot = FALSE)
+# 
+# # Find the maximum frequency for scaling
+# max_freq <- max(c(hist1$counts, hist2$counts))
+# 
+# # Plot the first histogram
+# plot(hist3, col = rgb(1, 0, 0, 0.5), ylim = c(0, max_freq), xlim = range(breaks), main = "Combined Histogram", xlab = "Value", ylab = "Frequency")
+# plot(hist4, col = rgb(0, 0, 1, 0.5), add = TRUE)
+# legend("topright", legend = c("Row Sample Covariance of De-correlated Z", "True Sigma Covariance"), fill = c(rgb(1, 0, 0, 0.5), rgb(0, 0, 1, 0.5)))
+# 
+# 
+# plot(hist1, col = rgb(1, 0, 0, 0.5), ylim = c(0, max_freq), xlim = range(breaks), main = "Correlation before and after De-correlation", xlab = "Correlation", ylab = "Frequency")
+# 
+# # Add the second histogram
+# plot(hist2, col = rgb(0, 0, 1, 0.5), add = TRUE)
+# 
+# # Add a legend
+# legend("topright", legend = c("True Sigma Covariance","Row Sample Correlation of De-correlated Z"), fill = c(rgb(1, 0, 0, 0.5), rgb(0, 0, 1, 0.5)))

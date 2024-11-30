@@ -23,6 +23,7 @@ gen.B <- function(p, b.mag = .9, s0= 2*p, seed = 480, lower.thresh = .6){
   invisible(capture.output(bb <- randomDag(seed = seed, numNodes = p,numEdges = s0)))
   b <-  get_adjmat_from_fges(bb$edges, length(bb$nodes), bb$nodes)
   b[b!=0] = runif(length(bb$edges), lower.thresh, b.mag)*(2*rbinom(length(bb$edges),1,0.5)-1)
+  
   realp <- pp <- p
   dimnames(b) <- list(as.character(1:realp), as.character(1:realp))
   return(list(b=b, s0=s0, realp = realp, pp = pp))
@@ -115,130 +116,6 @@ sim_X_LUM <- function(vers, p, n, omg.sq, sig, b){
   return(list(X = X, eps_mat = eps_mat_1, trunc_vals = trunc_vals, Z = Z_mat))
 }
 
-beta_est_loop = function(data, init_beta, init_epsilon ,block_size, loops, trueB){
-  update_beta = init_beta
-  eps_draw = init_epsilon
-  rmse = numeric(loops)
-  rmse_trueB = numeric(loops)
-  n = nrow(data)
-  p = ncol(data)
-  # spec_trunc = list()
-  # spec_eps = list()
-  # spec_beta = list()
-  # spec_Z = list()
-  for(i in 1:loops){
-    # if(n > p & i == 1){
-    #   print("here")
-    #   update_beta = probit_beta(data = data, init_beta = update_beta)[[1]]
-    # }
-    trunc_vals = obtain_trunc_vals(data, update_beta, eps_draw)
-    print(summary(c(update_beta)))
-    if(i == 1 | i == 20){
-      estimated_Sigma = Sig_Estimate_DAG(X = data, trunc_vals = trunc_vals, block_size = block_size)
-      if(is.positive.definite(estimated_Sigma) == F){
-        estimated_Sigma = nearPD(estimated_Sigma, corr = T, doSym = T)
-      }
-      L_hat = chol(solve(estimated_Sigma))
-      if(i == 1){
-        est1_Sig = estimated_Sigma
-      }
-    }
-    if(i %% 5 == 0){
-      print(i)
-    }
-    
-    # Cholesky decomposition of Theta = inverse(Sigma) such that L_hat %*% Sigma %*% t(L_hat) = I_n
-    eps_draw = epsilon_draw(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_size = block_size, prev_iter = eps_draw, iter_num = i)
-    Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
-    
-    
-    uncor_data = L_hat %*% Z
-    LX = L_hat %*% data
-    
-    #true_uncor_data = L_true %*% Z
-    #true_LX = L_true %*% data
-    new_beta_vals = new_beta(uncor_Z = uncor_data, LX = LX, init_beta = update_beta)
-    update_beta = new_beta_vals[[1]]
-    # spec2_beta[i] = update_beta[2,3]
-    rmse[i] = new_beta_vals[[2]]
-    diff = c(update_beta - trueB)
-    rmse_trueB[i] = sqrt(mean((diff[which(diff != 0)])^2))
-    #summary(c(update_beta))
-  }
-  return(list("beta" = update_beta, 
-              "Sigma" = estimated_Sigma, 
-              "Error" = rmse, 
-              "Error_trueB" = rmse_trueB,
-              "Sigma_1loop" = est1_Sig))
-}
-
-beta_est_loop3 = function(data, init_beta, init_epsilon ,block_size, loops, trueB){
-  update_beta = init_beta
-  eps_draw = init_epsilon
-  rmse = numeric(loops)
-  rmse_trueB = numeric(loops)
-  btw_betas = numeric(loops)
-  n = nrow(data)
-  p = ncol(data)
-  # spec_trunc = list()
-  # spec_eps = numeric(loops)
-  # spec_beta = numeric(loops)
-  # spec_Z = numeric(loops)
-  # spec_uncor = numeric(loops)
-  # spec_trunc_vals = numeric(loops)
-  for(i in 1:loops){
-    # if(n > p & i == 1){
-    #   print("here")
-    #   update_beta = probit_beta(data = data, init_beta = update_beta)[[1]]
-    # }
-    trunc_vals = obtain_trunc_vals(data, update_beta, eps_draw)
-    print(summary(c(update_beta)))
-    if(i == 2){
-      estimated_Sigma = Sig_Estimate_DAG(X = data, trunc_vals = trunc_vals, block_size = block_size)
-      if(is.positive.definite(estimated_Sigma) == F){
-        estimated_Sigma = nearPD(estimated_Sigma, corr = T, doSym = T)
-      }
-      L_hat = chol(solve(estimated_Sigma))
-    }
-    else if(i == 1){
-      estimated_Sigma = diag(nrow = nrow(data))
-      L_hat = chol(estimated_Sigma)
-    }
-    if(i %% 5 == 0){
-      print(i)
-    }
-    
-    # Cholesky decomposition of Theta = inverse(Sigma) such that L_hat %*% Sigma %*% t(L_hat) = I_n
-    eps_draw = epsilon_draw(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_size = block_size, prev_iter = eps_draw, iter_num = i)
-    Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
-    
-    
-    uncor_data = L_hat %*% Z
-    LX = L_hat %*% data
-    
-    #true_uncor_data = L_true %*% Z
-    #true_LX = L_true %*% data
-    new_beta_vals = new_beta(uncor_Z = uncor_data, LX = LX, init_beta = update_beta)
-    btw_betas[i] = sqrt(mean(c(update_beta - new_beta_vals[[1]])^2))
-    update_beta = new_beta_vals[[1]]
-    # spec_eps[i] = eps_draw[38,43]
-    # spec_Z[i] = Z[38,43]
-    # spec_uncor[i] = uncor_data[38,43]
-    # spec_beta[i] = update_beta[38,43]
-    # spec_trunc_vals[i] = trunc_vals[38,43]
-    # spec2_beta[i] = update_beta[2,3]
-    rmse[i] = new_beta_vals[[2]]
-    diff = c(update_beta - trueB)
-    rmse_trueB[i] = sqrt(mean((diff[which(diff != 0)])^2))
-    #summary(c(update_beta))
-  }
-  return(list("beta" = update_beta, 
-              "Sigma" = estimated_Sigma, 
-              "Error" = rmse, 
-              "Error_trueB" = rmse_trueB,
-              "between" = btw_betas))
-}
-
 beta_est_loop4 = function(data, init_beta, init_epsilon ,block_sizes, loops, trueB){
   update_beta = init_beta
   eps_draw = init_epsilon
@@ -256,11 +133,6 @@ beta_est_loop4 = function(data, init_beta, init_epsilon ,block_sizes, loops, tru
   # spec_uncor = numeric(loops)
   # spec_trunc_vals = numeric(loops)
   for(i in 1:loops){
-    # if(n > p & i == 1){
-    #   print("here")
-    #   update_beta = probit_beta(data = data, init_beta = update_beta)[[1]]
-    # }
-
     trunc_vals = obtain_trunc_vals(data, update_beta)
     print(summary(c(update_beta)))
     if(i == 2){
@@ -335,7 +207,6 @@ beta_est_loop4 = function(data, init_beta, init_epsilon ,block_sizes, loops, tru
               "hold_data" = hold_uncordata,
               "est_betas" = update_betas))
 }
-
 
 beta_est_loop_double_cov_est = function(data, init_beta, init_epsilon ,block_sizes, loops, trueB){
   update_beta = init_beta
@@ -377,6 +248,9 @@ beta_est_loop_double_cov_est = function(data, init_beta, init_epsilon ,block_siz
         # sum(block_sizes[1:j])
       }
       L_hat = chol(solve(estimated_Sigma))
+      if (i == 2){
+        start_est_Sigma = estimated_Sigma
+      }
     }
     else if(i == 1){
       estimated_Sigma = diag(nrow = nrow(data))
@@ -431,537 +305,105 @@ beta_est_loop_double_cov_est = function(data, init_beta, init_epsilon ,block_siz
               "Error_trueB" = rmse_trueB,
               "between" = btw_betas,
               "hold_data" = hold_uncordata,
-              "est_betas" = update_betas))
+              "est_betas" = update_betas,
+              "start_estimated_Sigma" = start_est_Sigma))
 }
 
-
-
 beta_est_loop_input_covariance = function(data, adj_mat, cov_est, init_epsilon ,block_sizes){
-    eps_draw = init_epsilon
-    update_beta = adj_mat
-    n = nrow(data)
-    p = ncol(data)
-    estimated_Sigma = cov_est
-    L_hat = chol(solve(estimated_Sigma))
-    for(i in 1:2){
-      trunc_vals = obtain_trunc_vals(data, update_beta)
-      eps_draw = withTimeout({
-        epsilon_draw(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_sizes = block_sizes, prev_iter = eps_draw, iter_num = 2)
-      }, timeout=600, onTimeout="silent")
-      if(is.null(eps_draw)){
-        print("Epsilon draw long run-time")
-        return(NULL)
-      }
-      Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
-      
-      
-      uncor_data = L_hat %*% Z
-      LX = L_hat %*% data
-      
-      #true_uncor_data = L_true %*% Z
-      #true_LX = L_true %*% data
-      start = Sys.time()
-      new_beta_vals = new_beta(uncor_Z = uncor_data, LX = LX, init_beta = adj_mat)
-      end = Sys.time()
-      print(paste0("new beta step: ", end - start))
-      #summary(c(update_beta))
-      update_beta = new_beta_vals[[1]]
+  eps_draw = init_epsilon
+  update_beta = adj_mat
+  n = nrow(data)
+  p = ncol(data)
+  estimated_Sigma = cov_est
+  L_hat = chol(solve(estimated_Sigma))
+  for(i in 1:2){
+    trunc_vals = obtain_trunc_vals(data, update_beta)
+    eps_draw = withTimeout({
+      epsilon_draw(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_sizes = block_sizes, prev_iter = eps_draw, iter_num = 2)
+    }, timeout=600, onTimeout="silent")
+    if(is.null(eps_draw)){
+      print("Epsilon draw long run-time")
+      return(NULL)
     }
+    Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
     
+    
+    uncor_data = L_hat %*% Z
+    LX = L_hat %*% data
+    
+    #true_uncor_data = L_true %*% Z
+    #true_LX = L_true %*% data
+    start = Sys.time()
+    new_beta_vals = new_beta(uncor_Z = uncor_data, LX = LX, init_beta = adj_mat)
+    end = Sys.time()
+    print(paste0("new beta step: ", end - start))
+    #summary(c(update_beta))
+    update_beta = new_beta_vals[[1]]
+  }
+  
   return(list("beta" = update_beta, 
               "Sigma" = estimated_Sigma))
 }
-
-
-
-beta_est_loop_bayesian_draws = function(data, init_beta, init_epsilon ,block_sizes, loops, trueB){
-  update_beta = init_beta
-  eps_draw = init_epsilon
-  rmse = numeric(loops)
-  rmse_trueB = numeric(loops)
-  btw_betas = numeric(loops)
-  hold_uncordata = list()
-  update_betas = list()
-  n = nrow(data)
-  p = ncol(data)
-  # spec_trunc = list()
-  # spec_eps = numeric(loops)
-  # spec_beta = numeric(loops)
-  # spec_Z = numeric(loops)
-  # spec_uncor = numeric(loops)
-  # spec_trunc_vals = numeric(loops)
-  for(i in 1:100){
-    # if(n > p & i == 1){
-    #   print("here")
-    #   update_beta = probit_beta(data = data, init_beta = update_beta)[[1]]
-    # }
-    #print(i)
-    if(i %% 10 == 0){
-      print(i)
+Sig_Estimate_DAG_test = function(X, beta, block_sizes){
+  data = X
+  trunc_vals = obtain_trunc_vals(X, beta)
+  c_sim = trunc_vals # [1,] for first row, etc.
+  t_data = t(data)
+  cluster_number = length(block_sizes)
+  estimated_sig = diag(nrow(data))
+  avg_corr = matrix(data = 0, nrow = max(block_sizes), ncol = max(block_sizes)) # dont know if I need or not
+  # for(i in 1:cluster_size){
+  #   sig[((i-1)*block_size + 1):(i*block_size),((i-1)*block_size + 1):(i*block_size)] = struc_matrix
+  # }
+  # result = sum_log_lik(data = t_data, rho_vec = rho, c1 = c1_sim, c2 = c2_sim)
+  
+  
+  #num_pairs = t(combn(rows, 2))
+  
+  rho = seq(0,0.95, length = 10)
+  j = 1
+  num_pairs = t(combn(1:block_sizes[j], 2))
+  for(i in 1:nrow(num_pairs)){
+    pair_data = t_data[,num_pairs[i,]]
+    c1_run = c_sim[num_pairs[i,1],]
+    c2_run = c_sim[num_pairs[i,2],]
+    result = sum_log_lik(data = pair_data, rho_vec = rho, c1 = c1_run, c2 = c2_run)
+    if(length(rho[which(result == max(result))]) == 0){
+      estimated_sig[(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,1],(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,2]] = mean(avg_corr)
+      estimated_sig[(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,2],(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,1]] = mean(avg_corr)
     }
-    trunc_vals = obtain_trunc_vals(data, update_beta, eps_draw)
-    #print(summary(c(update_beta)))
-    if(i == 2){
-      estimated_Sigma = Sig_Estimate_DAG(X = data, trunc_vals = trunc_vals, block_sizes = block_sizes)
-      if(is.positive.definite(estimated_Sigma) == F){
-        estimated_Sigma = nearPD(estimated_Sigma, corr = T, doSym = T)
-      }
-      # Checking eigen values for non-invertible blocks and adding regularizer of 0.05 if close to non-inv.
-      cluster_number = length(block_sizes)
-      for(j in 1:(cluster_number)){
-        check_cov = estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])]
-        if(any(eigen(check_cov)$values < 0.001)){
-          estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])] = (estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])] + 0.1*diag(block_sizes[j]))/(1 + 0.1)
-        }
-        # (sum(block_sizes[-(j:cluster_number)]))
-        # sum(block_sizes[1:j])
-      }
-      L_hat = chol(solve(estimated_Sigma))
+    else{
+      estimated_sig[(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,1],(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,2]] = rho[which(result == max(result))]
+      estimated_sig[(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,2],(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,1]] = rho[which(result == max(result))]
     }
-    else if(i == 1){
-      estimated_Sigma = diag(nrow = nrow(data))
-      L_hat = chol(estimated_Sigma)
-    }
-    # if(i %% 5 == 0){
-    #   print(i)
-    # }
-    
-    # Cholesky decomposition of Theta = inverse(Sigma) such that L_hat %*% Sigma %*% t(L_hat) = I_n
-    eps_draw = withTimeout({
-      # need to work on changing the epsilon draw based on the variable size blocks
-      epsilon_draw_single(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_sizes = block_sizes, prev_iter = eps_draw, iter_num = i)
-    }, timeout=600, onTimeout="silent")
-    if(is.null(eps_draw)){
-      print("Epsilon draw long run-time")
-      return(NULL)
-    }
-    Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
-    
-    #print("hits here")
-    uncor_data = L_hat %*% Z
-    hold_uncordata[[i]] = uncor_data
-    LX = L_hat %*% data
-    
-    #true_uncor_data = L_true %*% Z
-    #true_LX = L_true %*% data
-    # Update new_beta function using stan_glm
-    new_beta_vals = new_beta_bayes_reg_single(uncor_Z = uncor_data, LX = LX, init_beta = update_beta)
-    update_betas[[i]] = new_beta_vals[[1]]
-    btw_betas[i] = sqrt(mean(c(update_beta - new_beta_vals[[1]])^2))
-    update_beta = new_beta_vals[[1]]
-    # spec_eps[i] = eps_draw[38,43]
-    # spec_Z[i] = Z[38,43]
-    # spec_uncor[i] = uncor_data[38,43]
-    # spec_beta[i] = update_beta[38,43]
-    # spec_trunc_vals[i] = trunc_vals[38,43]
-    # spec2_beta[i] = update_beta[2,3]
-    rmse[i] = new_beta_vals[[2]]
-    diff = c(update_beta - trueB)
-    rmse_trueB[i] = sqrt(mean((diff[which(diff != 0)])^2))
-    #summary(c(update_beta))
   }
-  return(list("beta" = update_beta, 
-              "Sigma" = estimated_Sigma, 
-              "Error" = rmse, 
-              "Error_trueB" = rmse_trueB,
-              "between" = btw_betas,
-              "hold_data" = hold_uncordata,
-              "est_betas" = update_betas))
-}
-
-
-
-beta_est_loop_bayesian_draws_ridge = function(data, init_beta, init_epsilon ,block_sizes, loops, trueB){
-  update_beta = init_beta
-  eps_draw = init_epsilon
-  rmse = numeric(loops)
-  rmse_trueB = numeric(loops)
-  btw_betas = numeric(loops)
-  hold_uncordata = list()
-  update_betas = list()
-  n = nrow(data)
-  p = ncol(data)
-  # spec_trunc = list()
-  # spec_eps = numeric(loops)
-  # spec_beta = numeric(loops)
-  # spec_Z = numeric(loops)
-  # spec_uncor = numeric(loops)
-  # spec_trunc_vals = numeric(loops)
-  for(i in 1:100){
-    # if(n > p & i == 1){
-    #   print("here")
-    #   update_beta = probit_beta(data = data, init_beta = update_beta)[[1]]
-    # }
-    #print(i)
-    if(i %% 10 == 0){
-      print(i)
-    }
-    trunc_vals = obtain_trunc_vals(data, update_beta, eps_draw)
-    #print(summary(c(update_beta)))
-    if(i == 2){
-      start = Sys.time()
-      estimated_Sigma = Sig_Estimate_DAG(X = data, trunc_vals = trunc_vals, block_sizes = block_sizes)
-      end = Sys.time()
-      print(paste0("Covariance estimation step: ", end - start))
-      if(is.positive.definite(estimated_Sigma) == F){
-        estimated_Sigma = nearPD(estimated_Sigma, corr = T, doSym = T)
-      }
-      # Checking eigen values for non-invertible blocks and adding regularizer of 0.05 if close to non-inv.
-      cluster_number = length(block_sizes)
-      for(j in 1:(cluster_number)){
-        check_cov = estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])]
-        if(any(eigen(check_cov)$values < 0.001)){
-          estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])] = (estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])] + 0.1*diag(block_sizes[j]))/(1 + 0.1)
-        }
-        # (sum(block_sizes[-(j:cluster_number)]))
-        # sum(block_sizes[1:j])
-      }
-      L_hat = chol(solve(estimated_Sigma))
-    }
-    else if(i == 1){
-      estimated_Sigma = diag(nrow = nrow(data))
-      L_hat = chol(estimated_Sigma)
-    }
-    # if(i %% 5 == 0){
-    #   print(i)
-    # }
-    
-    # Cholesky decomposition of Theta = inverse(Sigma) such that L_hat %*% Sigma %*% t(L_hat) = I_n
-    eps_draw = withTimeout({
-      start = Sys.time()
-      # need to work on changing the epsilon draw based on the variable size blocks
-      epsilon_draw_single(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_sizes = block_sizes, prev_iter = eps_draw, iter_num = i)
-      end = Sys.time()
-      print(paste0("new epislon draw step: ", end - start))
-    }, timeout=600, onTimeout="silent")
-    if(is.null(eps_draw)){
-      print("Epsilon draw long run-time")
-      return(NULL)
-    }
-    Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
-    
-    #print("hits here")
-    uncor_data = L_hat %*% Z
-    hold_uncordata[[i]] = uncor_data
-    LX = L_hat %*% data
-    
-    #true_uncor_data = L_true %*% Z
-    #true_LX = L_true %*% data
-    # Update new_beta function using stan_glm
-    start = Sys.time()
-    new_beta_vals = new_beta_bayes_reg_single_ridge(uncor_Z = uncor_data, LX = LX, init_beta = update_beta)
-    end = Sys.time()
-    print(paste0("new beta step: ", end - start))
-    
-    update_betas[[i]] = new_beta_vals[[1]]
-    btw_betas[i] = sqrt(mean(c(update_beta - new_beta_vals[[1]])^2))
-    update_beta = new_beta_vals[[1]]
-    # spec_eps[i] = eps_draw[38,43]
-    # spec_Z[i] = Z[38,43]
-    # spec_uncor[i] = uncor_data[38,43]
-    # spec_beta[i] = update_beta[38,43]
-    # spec_trunc_vals[i] = trunc_vals[38,43]
-    # spec2_beta[i] = update_beta[2,3]
-    rmse[i] = new_beta_vals[[2]]
-    diff = c(update_beta - trueB)
-    rmse_trueB[i] = sqrt(mean((diff[which(diff != 0)])^2))
-    #summary(c(update_beta))
+  if(length(which(is.na(estimated_sig[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])]))) == 0){
+    avg_corr[1:block_sizes[j], 1:block_sizes[j]] = avg_corr[1:block_sizes[j], 1:block_sizes[j]] + estimated_sig[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])]/cluster_number
   }
-  return(list("beta" = update_beta, 
-              "Sigma" = estimated_Sigma, 
-              "Error" = rmse, 
-              "Error_trueB" = rmse_trueB,
-              "between" = btw_betas,
-              "hold_data" = hold_uncordata,
-              "est_betas" = update_betas))
-}
-
-
-
-# using lasso for each time
-
-beta_est_loop5 = function(data, init_beta, init_epsilon ,block_sizes, loops, trueB){
-  update_beta = init_beta
-  eps_draw = init_epsilon
-  rmse = numeric(loops)
-  rmse_trueB = numeric(loops)
-  btw_betas = numeric(loops)
-  hold_beta = list()
-  hold_beta[[1]] = init_beta
-  hold_uncordata = list()
-  n = nrow(data)
-  p = ncol(data)
-  # spec_trunc = list()
-  # spec_eps = numeric(loops)
-  # spec_beta = numeric(loops)
-  # spec_Z = numeric(loops)
-  # spec_uncor = numeric(loops)
-  # spec_trunc_vals = numeric(loops)
-  for(i in 1:loops){
-    # if(n > p & i == 1){
-    #   print("here")
-    #   update_beta = probit_beta(data = data, init_beta = update_beta)[[1]]
-    # }
-    
-    trunc_vals = obtain_trunc_vals(data, update_beta)
-    print(summary(c(update_beta)))
-    if(i == 2){
-      estimated_Sigma = Sig_Estimate_DAG(X = data, trunc_vals = trunc_vals, block_sizes = block_sizes)
-      if(is.positive.definite(estimated_Sigma) == F){
-        estimated_Sigma = nearPD(estimated_Sigma, corr = T, doSym = T)
-      }
-      # Checking eigen values for non-invertible blocks and adding regularizer of 0.05 if close to non-inv.
-      cluster_number = length(block_sizes)
-      for(j in 1:(cluster_number)){
-        check_cov = estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])]
-        if(any(eigen(check_cov)$values < 0.001)){
-          estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])] = (estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])] + 0.1*diag(block_sizes[j]))/(1 + 0.1)
-        }
-        # (sum(block_sizes[-(j:cluster_number)]))
-        # sum(block_sizes[1:j])
-      }
-      L_hat = chol(solve(estimated_Sigma))
+  
+  for(k in 1:cluster_number){
+    if(length(which(is.na(estimated_sig[((sum(block_sizes[-(k:cluster_number)]))+1):sum(block_sizes[1:k]),((sum(block_sizes[-(k:cluster_number)]))+1):sum(block_sizes[1:k])]))) > 0){
+      estimated_sig[((sum(block_sizes[-(k:cluster_number)]))+1):sum(block_sizes[1:k]),((sum(block_sizes[-(k:cluster_number)]))+1):sum(block_sizes[1:k])] = avg_corr
     }
-    else if(i == 1){
-      estimated_Sigma = diag(nrow = nrow(data))
-      L_hat = chol(estimated_Sigma)
-    }
-    if(i %% 5 == 0){
-      print(i)
-    }
-    
-    # Cholesky decomposition of Theta = inverse(Sigma) such that L_hat %*% Sigma %*% t(L_hat) = I_n
-    eps_draw = withTimeout({
-      # need to work on changing the epsilon draw based on the variable size blocks
-      epsilon_draw(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_sizes = block_sizes, prev_iter = eps_draw, iter_num = i)
-    }, timeout=600, onTimeout="silent")
-    if(is.null(eps_draw)){
-      print("Epsilon draw long run-time")
-      return(NULL)
-    }
-    Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
-    
-    
-    uncor_data = L_hat %*% Z
-    if(i != 1){
-      hold_uncordata[[i]] = uncor_data
-    }
-    
-    LX = L_hat %*% data
-    
-    #true_uncor_data = L_true %*% Z
-    #true_LX = L_true %*% data
-    new_beta_vals = new_beta_lasso(uncor_Z = uncor_data, LX = LX, init_beta = update_beta)
-    btw_betas[i] = sqrt(mean(c(update_beta - new_beta_vals[[1]])^2))
-    update_beta = new_beta_vals[[1]]
-    # spec_eps[i] = eps_draw[38,43]
-    # spec_Z[i] = Z[38,43]
-    # spec_uncor[i] = uncor_data[38,43]
-    # spec_beta[i] = update_beta[38,43]
-    # spec_trunc_vals[i] = trunc_vals[38,43]
-    # spec2_beta[i] = update_beta[2,3]
-    hold_beta[[i+1]] = update_beta
-    rmse[i] = new_beta_vals[[2]]
-    diff = c(update_beta - trueB)
-    rmse_trueB[i] = sqrt(mean((diff[which(diff != 0)])^2))
-    #summary(c(update_beta))
   }
-  return(list("beta" = update_beta, 
-              "Sigma" = estimated_Sigma, 
-              "Error" = rmse, 
-              "Error_trueB" = rmse_trueB,
-              "between" = btw_betas,
-              "hold_data" = hold_uncordata,
-              "hold_beta" = hold_beta))
-}
-
-
-beta_est_loop_decor_z = function(data, init_beta, init_epsilon ,block_sizes, loops, trueB){
-  update_beta = init_beta
-  eps_draw = init_epsilon
-  rmse = numeric(loops)
-  rmse_trueB = numeric(loops)
-  btw_betas = numeric(loops)
-  n = nrow(data)
-  p = ncol(data)
-  # spec_trunc = list()
-  # spec_eps = numeric(loops)
-  # spec_beta = numeric(loops)
-  # spec_Z = numeric(loops)
-  # spec_uncor = numeric(loops)
-  # spec_trunc_vals = numeric(loops)
-  for(i in 1:loops){
-    # if(n > p & i == 1){
-    #   print("here")
-    #   update_beta = probit_beta(data = data, init_beta = update_beta)[[1]]
-    # }
-    trunc_vals = obtain_trunc_vals(data, update_beta)
-    print(summary(c(update_beta)))
-    if(i == 2){
-      estimated_Sigma = Sig_Estimate_DAG(X = data, trunc_vals = trunc_vals, block_size = block_sizes)
-      if(is.positive.definite(estimated_Sigma) == F){
-        estimated_Sigma = nearPD(estimated_Sigma, corr = T, doSym = T)
-      }
-      cluster_number = length(block_sizes)
-      for(j in 1:cluster_number){
-        check_cov = estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])]
-        if(any(eigen(check_cov)$values < 0.001)){
-          estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])] = (estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])] + 0.1*diag(block_sizes[j]))/(1 + 0.1)
-        }
-      }
-      L_hat = chol(solve(estimated_Sigma))
-    }
-    else if(i == 1){
-      estimated_Sigma = diag(nrow = nrow(data))
-      L_hat = chol(estimated_Sigma)
-    }
-    if(i %% 5 == 0){
-      print(i)
-    }
-
-    # Cholesky decomposition of Theta = inverse(Sigma) such that L_hat %*% Sigma %*% t(L_hat) = I_n
-    eps_draw = withTimeout({
-      epsilon_draw(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_sizes = block_sizes, prev_iter = eps_draw, iter_num = i)
-    }, timeout=600, onTimeout="silent")
-    if(is.null(eps_draw)){
-      print("Epsilon draw long run-time")
-      return(NULL)
-    }
-    Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
-    
-    
-    uncor_data = L_hat %*% Z
-    LX = L_hat %*% data
-    
-    #true_uncor_data = L_true %*% Z
-    #true_LX = L_true %*% data
-    new_beta_vals = new_beta(uncor_Z = uncor_data, LX = LX, init_beta = update_beta)
-    btw_betas[i] = sqrt(mean(c(update_beta - new_beta_vals[[1]])^2))
-    update_beta = new_beta_vals[[1]]
-    # spec_eps[i] = eps_draw[38,43]
-    # spec_Z[i] = Z[38,43]
-    # spec_uncor[i] = uncor_data[38,43]
-    # spec_beta[i] = update_beta[38,43]
-    # spec_trunc_vals[i] = trunc_vals[38,43]
-    # spec2_beta[i] = update_beta[2,3]
-    rmse[i] = new_beta_vals[[2]]
-    diff = c(update_beta - trueB)
-    rmse_trueB[i] = sqrt(mean((diff[which(diff != 0)])^2))
-    #summary(c(update_beta))
+  
+  if(is.positive.definite(estimated_sig) == F){
+    estimated_Sigma = nearPD(estimated_sig, corr = T, doSym = T)
   }
-  return(list("beta" = update_beta, 
-              "Sigma" = estimated_Sigma, 
-              "Error" = rmse, 
-              "Error_trueB" = rmse_trueB,
-              "between" = btw_betas,
-              "Decor_data" = uncor_data))
-}
-
-beta_est_loop2 = function(data, init_beta, init_epsilon ,block_size, loops, trueB){
-  update_beta = init_beta
-  eps_draw = init_epsilon
-  rmse = numeric(loops)
-  rmse_trueB = numeric(loops)
-  n = nrow(data)
-  p = ncol(data)
-  # spec_trunc = list()
-  # spec_eps = list()
-  # spec_beta = list()
-  # spec_Z = list()
-  for(i in 1:loops){
-    trunc_vals = obtain_trunc_vals(data, update_beta)
-    if(i == 1){
-      estimated_Sigma = diag(nrow = n)
-      L_hat = chol(solve(estimated_Sigma))
-    }
-    if(i %% 5 == 0){
-      print(i)
-    }
-    
-    # Cholesky decomposition of Theta = inverse(Sigma) such that L_hat %*% Sigma %*% t(L_hat) = I_n
-    eps_draw = epsilon_draw(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_size = block_size, prev_iter = eps_draw, iter_num = i)
-    Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
-    
-    
-    uncor_data = L_hat %*% Z
-    LX = L_hat %*% data
-    
-    #true_uncor_data = L_true %*% Z
-    #true_LX = L_true %*% data
-    new_beta_vals = new_beta(uncor_Z = uncor_data, LX = LX, init_beta = update_beta)
-    for(j in 1:ncol(update_beta)){
-      #print(i)
-      if(length(which(update_beta[,j] != 0)) > 0){
-        parents = which(update_beta[,j] != 0)
-        if(any(is.na(uncor_data[,j]))){
-          uncor_Z_clean = uncor_data[-which(is.na(uncor_data[,j])),j]
-          LX_clean = LX[-which(is.na(uncor_data[,j])),parents]
-          model = lm(uncor_Z_clean[,j]~LX_clean[,parents])
-        }
-        else{
-          model = lm(uncor_data[,j]~LX[,parents])
-        }
-        # if(min(svd(model.matrix(model))$d) < sing_vals[[j]]){
-        #   sing_vals[[j]] = min(svd(model.matrix(model))$d)
-        # }
-      }
-    }
-    
-    update_beta = new_beta_vals[[1]]
-    # spec2_beta[i] = update_beta[2,3]
-    rmse[i] = new_beta_vals[[2]]
-    diff = c(update_beta - trueB)
-    rmse_trueB[i] = sqrt(mean((diff[which(diff != 0)])^2))
-    #summary(c(update_beta))
+  else{
+    estimated_Sigma = estimated_sig
   }
-  return(list("beta" = update_beta, 
-              "Sigma" = estimated_Sigma, 
-              "Error" = rmse, 
-              "Error_trueB" = rmse_trueB))
-}
-
-
-beta_est_loop_truesig = function(data, init_beta, init_epsilon ,block_size, loops, trueB, truesig){
-  update_beta = init_beta
-  eps_draw = init_epsilon
-  rmse = numeric(loops)
-  rmse_trueB = numeric(loops)
-  n = nrow(data)
-  p = ncol(data)
-  for(i in 1:loops){
-    trunc_vals = obtain_trunc_vals(data, update_beta)
-    #summary(c(true_trunc_vals))
-    
-    if(i <= 1){
-      estimated_Sigma = truesig
-      L_hat = chol(solve(estimated_Sigma))
+  # Checking eigen values for non-invertible blocks and adding regularizer of 0.05 if close to non-inv.
+  cluster_number = length(block_sizes)
+  for(j in 1:(cluster_number)){
+    check_cov = estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])]
+    if(any(eigen(check_cov)$values < 0.001)){
+      estimated_Sigma[1:block_sizes[j],1:block_sizes[j]] = estimated_Sigma[1:block_sizes[j],1:block_sizes[j]] + 0.1*diag(block_sizes[j])/(1 + 0.1)
     }
-    if(i %% 5 == 0){
-      print(i)
-    }
-    
-    # try fixing epsilon
-    # Cholesky decomposition of Theta = inverse(Sigma) such that L_hat %*% Sigma %*% t(L_hat) = I_n
-    
-    #update_epsilon = expectation_epsilon(Sigma = estimated_Sigma, B = update_beta, X = data, block_size = 2, init_epsilon = update_epsilon)
-    eps_draw = epsilon_draw(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_size = block_size, prev_iter = eps_draw, iter_num = i)
-    Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
-    #summary(c(update_epsilon))
-    #summary(c(Z))
-    
-    uncor_data = L_hat %*% Z
-    LX = L_hat %*% data
-    
-    #true_uncor_data = L_true %*% Z
-    #true_LX = L_true %*% data
-    new_beta_vals = new_beta(uncor_Z = uncor_data, LX = LX, init_beta = update_beta)
-    update_beta = new_beta_vals[[1]]
-    rmse[i] = new_beta_vals[[2]]
-    diff = c(update_beta - trueB)
-    rmse_trueB[i] = sqrt(mean((diff[which(diff != 0)])^2))
-    #summary(c(update_beta))
+    # (sum(block_sizes[-(j:cluster_number)]))
+    # sum(block_sizes[1:j])
   }
-  return(list("beta" = update_beta, "Sigma" = estimated_Sigma, "Error" = rmse, "Error_trueB" = rmse_trueB))
+  return(estimated_Sigma)
 }
 
 new_beta = function(uncor_Z, LX, init_beta){
@@ -992,106 +434,6 @@ new_beta = function(uncor_Z, LX, init_beta){
   return(list(beta_update, rmse_error))
 }
 
-new_beta_bayes_reg = function(uncor_Z, LX, init_beta){
-  beta_update = matrix(data = 0, nrow = nrow(init_beta), ncol = ncol(init_beta))
-  max_parents = 0
-  n = nrow(LX)
-  p = ncol(LX)
-  for(i in 1:ncol(init_beta)){
-    #print(i)
-    if(length(which(init_beta[,i] != 0)) > 0){
-      parents = which(init_beta[,i] != 0)
-      model = stan_glm(uncor_Z[,i]~data.matrix(LX[,parents]), refresh = 0, iter = 1) # Change to stan_glm
-      
-      beta_estimate = as.matrix(model)[1,][-length(as.matrix(model)[1,])] # draw one sample from posterior
-      beta_update[parents,i] = beta_estimate[2:length(beta_estimate)]
-    }
-  }
-  diff = (beta_update - init_beta)
-  rmse_error = sqrt(mean(diff[which(diff != 0)]^2))
-  #print(max_parents)
-  return(list(beta_update, rmse_error))
-}
-
-new_beta_bayes_reg_single = function(uncor_Z, LX, init_beta){
-  beta_update = matrix(data = 0, nrow = nrow(init_beta), ncol = ncol(init_beta))
-  max_parents = 0
-  n = nrow(LX)
-  p = ncol(LX)
-  for(i in 1:ncol(init_beta)){
-    #print(i)
-    # 20/n + 50/p
-    if(length(which(init_beta[,i] != 0)) > 0){
-      parents = which(init_beta[,i] != 0)
-      #model = stan_glm(uncor_Z[,i]~data.matrix(LX[,parents]), refresh = 0, iter = 1) # Change to stan_glm
-      X = as.matrix(LX[,parents])
-      mu = solve((t(X) %*% X)) %*% (t(X) %*% uncor_Z[,i])
-      variance = solve(t(X) %*% X)
-      one_sample = rmvnorm(1, mean = mu, sigma = variance) # draw one sample from posterior
-      beta_update[parents,i] = one_sample
-    }
-  }
-  diff = (beta_update - init_beta)
-  rmse_error = sqrt(mean(diff[which(diff != 0)]^2))
-  #print(max_parents)
-  return(list(beta_update, rmse_error))
-}
-
-new_beta_bayes_reg_single_ridge = function(uncor_Z, LX, init_beta){
-  beta_update = matrix(data = 0, nrow = nrow(init_beta), ncol = ncol(init_beta))
-  max_parents = 0
-  n = nrow(LX)
-  p = ncol(LX)
-  lambda = 20/n+50/p
-  for(i in 1:ncol(init_beta)){
-    #print(i)
-    # 20/n + 50/p
-    if(length(which(init_beta[,i] != 0)) > 0){
-      parents = which(init_beta[,i] != 0)
-      #model = stan_glm(uncor_Z[,i]~data.matrix(LX[,parents]), refresh = 0, iter = 1) # Change to stan_glm
-      X = as.matrix(LX[,parents])
-      mu = solve((t(X) %*% X)+ lambda*diag(ncol(X))) %*% (t(X) %*% uncor_Z[,i])
-      variance = solve(t(X) %*% X + lambda*diag(ncol(X)))
-      one_sample = rmvnorm(1, mean = mu, sigma = variance) # draw one sample from posterior
-      beta_update[parents,i] = one_sample
-    }
-  }
-  diff = (beta_update - init_beta)
-  rmse_error = sqrt(mean(diff[which(diff != 0)]^2))
-  #print(max_parents)
-  return(list(beta_update, rmse_error))
-}
-
-
-
-new_beta_lasso = function(uncor_Z, LX, init_beta){
-  beta_update = matrix(data = 0, nrow = nrow(init_beta), ncol = ncol(init_beta))
-  colnames(beta_update) = rownames(beta_update) = 1:ncol(LX)
-  n = nrow(LX)
-  p = ncol(LX)
-  for(i in 1:ncol(init_beta)){
-    #print(i)
-    if(length(which(init_beta[,i] != 0)) > 0){
-      parents = which(init_beta[,i] != 0)
-      #if(length(parents) > 1){
-        mod = glmnet(x = data.matrix(LX[,-i]), y = uncor_Z[,i], alpha = 1, lambda = 0.2-0.0002*n+0.0000475*p)
-        coef_mod = coef(mod)
-        beta_update[rownames(coef_mod)[which(coef_mod != 0)][-1],i] = coef_mod[which(coef_mod != 0)][-1]
-        
-      #}
-      #else{
-       # model = lm(uncor_Z[,i]~LX[,parents])
-      #  beta_estimate = summary(model)$coefficients
-      #  beta_update[parents,i] = beta_estimate[2:nrow(beta_estimate),1]
-      #}
-    }
-  }
-  diff = (beta_update - init_beta)
-  rmse_error = sqrt(mean(diff[which(diff != 0)]^2))
-  #print(max_parents)
-  return(list(beta_update, rmse_error))
-}
-
 diff_sig_rho = function(n, estimated_Sig, rho){
   sig_2 = block_diag_sep(n = n, block_size = 2, struc_matrix = matrix(c(1,rho,rho,1), nrow = 2, ncol = 2, byrow = T))
   difference = c((sig_2 - estimated_Sig)^2)
@@ -1104,38 +446,6 @@ diff_sig = function(n, estimated_Sig, cov_struc){
   difference = c((sig_2 - estimated_Sig)^2)
   non_zero = difference[which(difference != 0)]
   return(sqrt(mean(non_zero)))
-}
-
-new_beta2 = function(uncor_Z, LX, init_beta){
-  beta_update = matrix(data = 0, nrow = nrow(init_beta), ncol = ncol(init_beta))
-  max_parents = 0
-  for(i in 1:ncol(init_beta)){
-    #print(i)
-    if(length(which(init_beta[,i] != 0)) > 0){
-      parents = which(init_beta[,i] != 0)
-      if(length(parents) > max_parents){
-        max_parents = length(parents)
-      }
-      if(any(is.na(uncor_Z[,i]))){
-        uncor_Z_clean = uncor_Z[-which(is.na(uncor_Z[,i])),i]
-        LX_clean = LX[-which(is.na(uncor_Z[,i])),parents]
-        beta_estimate = summary(lm(uncor_Z_clean[,i]~LX_clean[,parents]))$coefficients
-        beta_update[parents,i] = beta_estimate[2:nrow(beta_estimate),1]
-      }
-      else{
-        model = lm(uncor_Z[,i]~LX[,parents])
-        if(any(svd(model.matrix(model))$d < 0.001)){
-          print("Singular Value very small")
-        }
-        beta_estimate = summary(lm(uncor_Z[,i]~LX[,parents]))$coefficients
-        beta_update[parents,i] = beta_estimate[2:nrow(beta_estimate),1]
-      }
-    }
-  }
-  diff = (beta_update - init_beta)
-  rmse_error = sqrt(mean(diff[which(diff != 0)]^2))
-  #print(max_parents)
-  return(list(beta_update, rmse_error))
 }
 
 sing_val_func = function(uncor_Z, LX, init_beta){
@@ -1514,34 +824,6 @@ probit_beta = function(data, init_beta){
   return(list(beta_update, rmse_error))
 }
 
-logit_beta = function(data, init_beta){
-  beta_update = matrix(data = 0, nrow = nrow(init_beta), ncol = ncol(init_beta))
-  colnames(beta_update) = paste("X", 1:nrow(beta_update), sep = "")
-  rownames(beta_update) = paste("X", 1:nrow(beta_update), sep = "")
-  data = data.frame(data)
-  for(i in 1:ncol(init_beta)){
-    #print(i)
-    if(length(which(init_beta[,i] != 0)) > 0){
-      parents = which(init_beta[,i] != 0)
-      X_vars = paste("X", parents, sep="")
-      y_vars = paste("X", i, sep = "")
-      #mod = glmnet(x = data.matrix(data[,parents]), y = data[,i], family = binomial(link = "probit"), alpha = 1, lambda = 0.1)
-      
-      form = as.formula(paste(y_vars, paste(X_vars, collapse= "+"), sep = "~"))
-      model = glm(form, family = binomial(link = "logit"), 
-                  data = data)
-      # if(any(svd(model.matrix(model))$d < 0.01)){
-      #   print("Singular values close to 0 for Probit")
-      # }
-      beta_estimate = summary(model)$coefficients
-      #beta_estimate = coef(mod)
-      beta_update[names(beta_estimate[,1])[-1],i] = beta_estimate[2:nrow(beta_estimate),1]
-    }
-  }
-  rmse_error = sqrt(mean((beta_update - init_beta)^2))
-  return(list(beta_update, rmse_error))
-}
-
 
 block_diag_sep_var = function(n, min_block_size, max_block_size, cov_struc){
   block_sizes = c()
@@ -1577,68 +859,6 @@ block_diag_sep_var = function(n, min_block_size, max_block_size, cov_struc){
   #   sig[((i-1)*block_size + 1):(i*block_size),((i-1)*block_size + 1):(i*block_size)] = struc_matrix
   # }
   return(list(sig, block_sizes))
-}
-
-Sig_Estimate_DAG_test = function(X, beta, block_sizes){
-  data = X
-  trunc_vals = obtain_trunc_vals(X, beta)
-  c_sim = trunc_vals # [1,] for first row, etc.
-  t_data = t(data)
-  cluster_number = length(block_sizes)
-  estimated_sig = diag(nrow(data))
-  avg_corr = matrix(data = 0, nrow = max(block_sizes), ncol = max(block_sizes)) # dont know if I need or not
-  # for(i in 1:cluster_size){
-  #   sig[((i-1)*block_size + 1):(i*block_size),((i-1)*block_size + 1):(i*block_size)] = struc_matrix
-  # }
-  # result = sum_log_lik(data = t_data, rho_vec = rho, c1 = c1_sim, c2 = c2_sim)
-  
-  
-  #num_pairs = t(combn(rows, 2))
-  
-  rho = seq(0,0.95, length = 10)
-  j = 1
-  num_pairs = t(combn(1:block_sizes[j], 2))
-  for(i in 1:nrow(num_pairs)){
-    pair_data = t_data[,num_pairs[i,]]
-    c1_run = c_sim[num_pairs[i,1],]
-    c2_run = c_sim[num_pairs[i,2],]
-    result = sum_log_lik(data = pair_data, rho_vec = rho, c1 = c1_run, c2 = c2_run)
-    if(length(rho[which(result == max(result))]) == 0){
-      estimated_sig[(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,1],(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,2]] = mean(avg_corr)
-      estimated_sig[(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,2],(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,1]] = mean(avg_corr)
-    }
-    else{
-      estimated_sig[(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,1],(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,2]] = rho[which(result == max(result))]
-      estimated_sig[(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,2],(sum(block_sizes[-(j:cluster_number)]))+num_pairs[i,1]] = rho[which(result == max(result))]
-    }
-  }
-  if(length(which(is.na(estimated_sig[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])]))) == 0){
-    avg_corr[1:block_sizes[j], 1:block_sizes[j]] = avg_corr[1:block_sizes[j], 1:block_sizes[j]] + estimated_sig[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])]/cluster_number
-  }
-
-  for(k in 1:cluster_number){
-    if(length(which(is.na(estimated_sig[((sum(block_sizes[-(k:cluster_number)]))+1):sum(block_sizes[1:k]),((sum(block_sizes[-(k:cluster_number)]))+1):sum(block_sizes[1:k])]))) > 0){
-      estimated_sig[((sum(block_sizes[-(k:cluster_number)]))+1):sum(block_sizes[1:k]),((sum(block_sizes[-(k:cluster_number)]))+1):sum(block_sizes[1:k])] = avg_corr
-    }
-  }
-  
-  if(is.positive.definite(estimated_sig) == F){
-    estimated_Sigma = nearPD(estimated_sig, corr = T, doSym = T)
-  }
-  else{
-    estimated_Sigma = estimated_sig
-  }
-  # Checking eigen values for non-invertible blocks and adding regularizer of 0.05 if close to non-inv.
-  cluster_number = length(block_sizes)
-  for(j in 1:(cluster_number)){
-    check_cov = estimated_Sigma[((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j]),((sum(block_sizes[-(j:cluster_number)]))+1):sum(block_sizes[1:j])]
-    if(any(eigen(check_cov)$values < 0.001)){
-      estimated_Sigma[1:block_sizes[j],1:block_sizes[j]] = estimated_Sigma[1:block_sizes[j],1:block_sizes[j]] + 0.1*diag(block_sizes[j])/(1 + 0.1)
-    }
-    # (sum(block_sizes[-(j:cluster_number)]))
-    # sum(block_sizes[1:j])
-  }
-  return(estimated_Sigma)
 }
 
 
@@ -1768,6 +988,7 @@ sum_log_lik = function(data, rho_vec, c1, c2){
   return(llk_vect)
 }
 
+
 init_epsilon_creation = function(n, p, sig, omg.sq){
   eps_mat <- matrix(0, n, p)
   for(i in 1:p){
@@ -1775,54 +996,6 @@ init_epsilon_creation = function(n, p, sig, omg.sq){
   }
   return(eps_mat)
 }
-
-
-beta_est_loop_old = function(data, init_beta, init_epsilon ,block_size, loops, trueB){
-  update_beta = init_beta
-  eps_draw = init_epsilon
-  rmse = numeric(loops)
-  rmse_trueB = numeric(loops)
-  n = nrow(data)
-  p = ncol(data)
-  for(i in 1:loops){
-    trunc_vals = obtain_trunc_vals(data, update_beta, eps_draw)
-    #summary(c(true_trunc_vals))
-    
-    if(i <= 1){
-      estimated_Sigma = Sig_Estimate_DAG(X = data, trunc_vals = trunc_vals, block_size = block_size)
-      if(is.positive.definite(estimated_Sigma) == F){
-        estimated_Sigma = nearPD(estimated_Sigma, corr = T, doSym = T) # may need to symmetrize this
-      }
-      L_hat = chol(solve(estimated_Sigma))
-    }
-    if(i %% 5 == 0){
-      print(i)
-    }
-    
-    # try fixing epsilon
-    # Cholesky decomposition of Theta = inverse(Sigma) such that L_hat %*% Sigma %*% t(L_hat) = I_n
-    eps_draw = epsilon_draw_old(Sigma_hat = estimated_Sigma, data = data, trunc_vals = trunc_vals, block_size = block_size, prev_iter = eps_draw)
-    #L_true = chol(solve(sig_2))
-    #update_epsilon = expectation_epsilon(Sigma = estimated_Sigma, B = update_beta, X = data, block_size = 2, init_epsilon = update_epsilon)
-    Z = obtain_hidden_Z(X = data, beta = update_beta, epsilon = eps_draw)
-    #summary(c(update_epsilon))
-    #summary(c(Z))
-    
-    uncor_data = L_hat %*% Z
-    LX = L_hat %*% data
-    
-    #true_uncor_data = L_true %*% Z
-    #true_LX = L_true %*% data
-    new_beta_vals = new_beta2(uncor_Z = uncor_data, LX = LX, init_beta = update_beta)
-    update_beta = new_beta_vals[[1]]
-    rmse[i] = new_beta_vals[[2]]
-    diff = c(update_beta - trueB)
-    rmse_trueB[i] = sqrt(mean((diff[which(diff != 0)])^2))
-    #summary(c(update_beta))
-  }
-  return(list("beta" = update_beta, "Sigma" = estimated_Sigma, "Error" = rmse, "Error_trueB" = rmse_trueB))
-}
-
 
 block_diag_sep = function(n, block_size, struc_matrix){
   cluster_size = ceiling(n/block_size)
@@ -1832,32 +1005,6 @@ block_diag_sep = function(n, block_size, struc_matrix){
   }
   return(sig)
 }
-
-
-epsilon_draw_old = function(Sigma_hat, data, trunc_vals, block_size, prev_iter){
-  # have a n by p truncation values.  Now just check each element in data
-  a = obtain_bounds(data,trunc_vals)$a
-  b = obtain_bounds(data,trunc_vals)$b
-  eps_draws = matrix(0, nrow = nrow(data), ncol = ncol(data))
-  num_blocks = ceiling(nrow(data)/block_size)
-  # Clean up bounds
-  for(i in 1:num_blocks){
-    init_index = ((i-1)*block_size+1)
-    end_index = i*block_size
-    data_cluster = data[init_index:end_index,]
-    a_bounds = a[init_index:end_index,]
-    b_bounds = b[init_index:end_index,]
-    Sigma_cluster = Sigma_hat[init_index:end_index,init_index:end_index]
-    for(j in 1:ncol(data)){
-      eps_draws[init_index:end_index,j] = tmvtnorm::rtmvnorm(n = 1, mean = rep(0,nrow(data_cluster)), sigma = Sigma_cluster, lower = a_bounds[,j], upper = b_bounds[,j], algorithm = "gibbs", burn.in.samples = 1)
-      if(any(is.nan(eps_draws[init_index:end_index,j]))){
-        eps_draws[init_index:end_index,j] = prev_iter[init_index:end_index,j]
-      }
-    }
-  }
-  return(eps_draws)
-}
-
 
 beta_estimate_mb = function(data, mb){
   df_data = data.frame(data)
@@ -2261,6 +1408,8 @@ neighborhood_selection_dag_lasso = function(data){
   return(parents)
 }
 
+
+
 neighborhood_selection_pc_get_dag_decor = function(data){ # to get parents
   n <- nrow (data)
   V <- colnames(data) # labels aka node names
@@ -2276,16 +1425,276 @@ neighborhood_selection_pc_get_dag_decor = function(data){ # to get parents
   return(parents)
 }
 
-###
-neighborhood_selection_iamb_get_dag_decor = function(data){ # to get parents
+
+###### functions for copula PC ######
+
+gaussCItestLocal <- function (x, y, S, suffStat) 
+{
+  # Using Fisher's z-transformation of the partial correlation, test for zero partial correlation. 
+  #
+  # Args:
+  #   see function gaussCItest() in Package 'pcalg';
+  #   'suffStat' contains an addtional element 'ESS.Mat', that is, the matrix of effective sample size. 
+  #
+  # Returns:
+  #   the p-value of the current test.
+  
+  subMat <- suffStat$ESS.Mat[c(x,y,S),c(x,y,S)]
+  ne <- mean(subMat[upper.tri(subMat)], na.rm = T)
+  z <- zStat(x, y, S, C = suffStat$C, n = ne)
+  2 * pnorm(abs(z), lower.tail = FALSE)
+}
+
+inferCopulaModel <- function (Y, n0 = dim(Y)[2] + 1, S0 = diag(dim(Y)[2])/n0, nsamp = 100, 
+                              odens = max(1, round(nsamp/1000)), impute = any(is.na(Y)), 
+                              plugin.threshold = 20, plugin.marginal = (apply(Y, 2, function(x) {
+                                length(unique(x))
+                              }) > plugin.threshold), verb = TRUE) 
+{
+  # Main function to perform inference for Gaussian copula models.
+  #
+  # Args: 
+  #   Y, a n by p data matrix (n-observations, p-variables).
+  #
+  # Return:
+  #   C.psamp, a collection of samples of the underlying correlation matrix.
+  #
+  # For details about the arguements and outputs, refer to function 'sbgcop.mcmc' in R package 'sbgcop',
+  #   https://cran.r-project.org/web/packages/sbgcop/index.html.
+  #
+  # Author: Ruifei Cui
+  
+  require(sbgcop)
+  ok_S0 <- all(eigen(S0)$val > 0) & dim(S0)[1] == dim(Y)[2] & 
+    dim(S0)[2] == dim(Y)[2]
+  ok_n0 <- (n0 >= 0)
+  if (!ok_S0) {
+    stop("Error: S0 must be a positive definite p x p matrix \n")
+  }
+  if (!ok_n0) {
+    stop("Error: n0 must be positive \n")
+  }
+  
+  vnames <- colnames(Y)
+  Y <- as.matrix(Y)
+  colnames(Y) <- vnames
+  n <- dim(Y)[1]
+  p <- dim(Y)[2]
+  R <- NULL
+  for (j in 1:p) {
+    R <- cbind(R, match(Y[, j], sort(unique(Y[, j]))))
+  }
+  Rlevels <- apply(R, 2, max, na.rm = TRUE)
+  Ranks <- apply(Y, 2, rank, ties.method = "average", na.last = "keep")
+  N <- apply(!is.na(Ranks), 2, sum)
+  U <- t(t(Ranks)/(N + 1))
+  Z <- qnorm(U)
+  Zfill <- matrix(rnorm(n * p), n, p)
+  Z[is.na(Y)] <- Zfill[is.na(Y)]
+  S <- cov(Z)
+  Y.pmean <- Y
+  if (impute) {
+    Y.pmean <- matrix(0, nrow = n, ncol = p)
+  }
+  LPC <- NULL
+  C.psamp <- array(dim = c(p, p, floor(nsamp/odens)))
+  Y.imp <- NULL
+  if (impute) {
+    Y.imp <- array(dim = c(n, p, floor(nsamp/odens)))
+  }
+  dimnames(C.psamp) <- list(colnames(Y), colnames(Y), 
+                            1:floor(nsamp/odens))
+  for (ns in 1:nsamp) {
+    for (j in sample(1:p)) {
+      Sjc <- S[j, -j] %*% solve(S[-j, -j]+0.01*diag(dim(S[-j,-j])[1]))
+      sdj <- sqrt(S[j, j] - S[j, -j] %*% solve(S[-j, 
+                                                 -j]+0.01*diag(dim(S[-j,-j])[1])) %*% S[-j, j])
+      muj <- Z[, -j] %*% t(Sjc)
+      if (!plugin.marginal[j]) {
+        for (r in 1:Rlevels[j]) {
+          ir <- (1:n)[R[, j] == r & !is.na(R[, j])]
+          lb <- suppressWarnings(max(Z[R[, j] == r - 
+                                         1, j], na.rm = TRUE))
+          ub <- suppressWarnings(min(Z[R[, j] == r + 
+                                         1, j], na.rm = TRUE))
+          Z[ir, j] <- qnorm(runif(length(ir), pnorm(lb, 
+                                                    muj[ir], sdj), pnorm(ub, muj[ir], sdj)), 
+                            muj[ir], sdj)
+        }
+      }
+      ir <- (1:n)[is.na(R[, j])]
+      Z[ir, j] <- rnorm(length(ir), muj[ir], sdj)
+    }
+    # relocate the mean to zero
+    # added by Ruifei Cui
+    Z = t( (t(Z)-apply(Z,2,mean)))
+    
+    S <- solve(rwish(solve(S0 * n0 + t(Z) %*% Z), n0 + 
+                       n))
+    if (ns%%odens == 0) {
+      C <- S/(sqrt(diag(S)) %*% t(sqrt(diag(S))))
+      lpc <- ldmvnorm(Z %*% diag(1/sqrt(diag(S))), 
+                      C)
+      LPC <- c(LPC, lpc)
+      C.psamp[, , ns/odens] <- C
+      if (impute) {
+        Y.imp.s <- Y
+        for (j in 1:p) {
+          Y.imp.s[is.na(Y[, j]), j] <- quantile(Y[, 
+                                                  j], pnorm(Z[is.na(Y[, j]), j], 0, sqrt(S[j, 
+                                                                                           j])), na.rm = TRUE, type = 1)
+        }
+        Y.imp[, , ns/odens] <- Y.imp.s
+        Y.pmean <- ((ns/odens - 1)/(ns/odens)) * Y.pmean + 
+          (1/(ns/odens)) * Y.imp.s
+      }
+    }
+    if (verb == TRUE & (ns%%(odens * 10)) == 0) {
+      cat(round(100 * ns/nsamp), "percent done ", 
+          date(), "\n")
+    }
+  }
+  G.ps <- list(C.psamp = C.psamp, Y.pmean = Y.pmean, Y.impute = Y.imp, 
+               LPC = LPC)
+  class(G.ps) <- "psgc"
+  return(G.ps)
+}
+
+
+
+init_data_dag_copPC = function(data){ # to get parents
+  n <- nrow (data)
+  p = ncol(data)
+  
+  cop.obj <- inferCopulaModel(data, verb = T)
+  # correlation matrix samples
+  C_samples <- cop.obj$C.psamp[,,1:100]
+  # average correlation matrix
+  corr.cop <- apply(C_samples, c(1,2), mean)
+  # local effective sample size
+  less.cop <- ((1-corr.cop^2)^2)/apply(C_samples,c(1,2), var)
+  
+  n <- nrow (data)
+  var.names <- colnames(data) # labels aka node names
+  ## estimate CPDAG
+  pc.fit <- pc(suffStat = list(C = corr.cop, n = n), 
+                       indepTest = gaussCItest, labels = var.names, alpha = .05, conservative = T)@graph@edgeL
   parents = matrix(0,nrow = ncol(data), ncol = ncol(data))
   colnames(parents) = rownames(parents) = 1:ncol(data)
+  for(i in 1:ncol(data)){
+    parents[i, pc.fit[[i]]$edges] = 1
+  }
+  # parents = matrix(0,nrow = ncol(data), ncol = ncol(data))
+  # colnames(parents) = rownames(parents) = 1:ncol(data)
+  # for(i in 1:ncol(data)){
+  #   parents[i,pc.D[[i]]$edges] = 1
+  # }
+  return(parents)
+}
+
+neighborhood_selection_copPC_get_dag_decor = function(data){ # to get parents
+  n <- nrow (data)
+  p = ncol(data)
+  var.names = colnames(data)
+  cop.obj <- inferCopulaModel(data, verb = T)
+  # correlation matrix samples
+  C_samples <- cop.obj$C.psamp[,,1:100]
+  # average correlation matrix
+  corr.cop <- apply(C_samples, c(1,2), mean)
+  # local effective sample size
+  less.cop <- ((1-corr.cop^2)^2)/apply(C_samples,c(1,2), var)
+  
+  ## estimate CPDAG
+  pc.fit <- pc(suffStat = list(C = corr.cop, n = n, ESS.Mat = less.cop), 
+               indepTest = gaussCItestLocal, labels = var.names, alpha = .05, conservative = T)@graph@edgeL
+  parents = matrix(0,nrow = ncol(data), ncol = ncol(data))
+  colnames(parents) = rownames(parents) = 1:ncol(data)
+  for(i in 1:ncol(data)){
+    parents[i, pc.fit[[i]]$edges] = 1
+  }
+  return(parents)
+}
+
+
+neighborhood_selection_tabu_get_dag_decor = function(data){ # to get parents
+  n <- nrow (data)
+  V <- colnames(data) # labels aka node names
+  ## estimate CPDAG
+  data = as.data.frame(data)
+  
+  tabu.fit <- tabu(data)$nodes
+  parents = matrix(0,nrow = ncol(data), ncol = ncol(data))
+  colnames(parents) = rownames(parents) = paste0(1:ncol(data))
+  for(i in colnames(data)){
+    parents[i, tabu.fit[[i]]$children] = 1
+  }
+  return(parents)
+}
+
+
+init_tabu_get_dag = function(data){ # to get parents
+  n <- nrow (data)
+  V <- colnames(data) # labels aka node names
+  ## estimate CPDAG
+  data = as.data.frame(data)
+  data[] <- lapply(data, function(x) {
+    if (is.numeric(x)) {
+      as.factor(x)
+    } else {
+      x
+    }
+  })
+  tabu.fit <- tabu(data, score = "bic")$nodes
+  parents = matrix(0,nrow = ncol(data), ncol = ncol(data))
+  colnames(parents) = rownames(parents) = paste0(1:ncol(data))
+  for(i in colnames(data)){
+    parents[i, tabu.fit[[i]]$children] = 1
+  }
+  return(parents)
+}
+
+
+###
+init_iamb_get_dag = function(data){ # to get parents
+  n <- nrow (data)
+  V <- colnames(data) # labels aka node names
+  ## estimate CPDAG
+  data = as.data.frame(data)
+  data[] <- lapply(data, function(x) {
+    if (is.numeric(x)) {
+      as.factor(x)
+    } else {
+      x
+    }
+  })
+  iamb.fit <- bnlearn::iamb(x = data, test = "mi")$nodes
+  parents = matrix(0,nrow = ncol(data), ncol = ncol(data))
+  colnames(parents) = rownames(parents) = paste0(1:ncol(data))
+  for(i in colnames(data)){
+    if(length(iamb.fit[[i]]$children) > 0){
+      parents[i, iamb.fit[[i]]$children] = 1
+    }
+    else{
+      parents[i, iamb.fit[[i]]$nbr] = 1
+    }
+  }
+  return(parents)
+}
+
+neighborhood_selection_iamb_get_dag_decor = function(data){ # to get parents
+  parents = matrix(0,nrow = ncol(data), ncol = ncol(data))
+  data = as.data.frame(data)
+  colnames(parents) = rownames(parents) = paste0(1:ncol(data))
   #skel = pchc::mmhc(x = data, max_k = 7, alpha = 0.05)$dag$nodes
-  score = new("GaussL0penObsScore", data)
-  skel = pcalg::ges(score)$essgraph$.in.edges
+  iamb.fit = bnlearn::iamb(x = data, test = "cor")$nodes
   for(i in 1:ncol(data)){
     #parent_list = sub('.', '', skel[[i]]$parents)
-    parents[skel[[i]],i] = 1
+    if(length(iamb.fit[[i]]$children) > 0){
+      parents[i, iamb.fit[[i]]$children] = 1
+    }
+    else{
+      parents[i, iamb.fit[[i]]$nbr] = 1
+    }
   }
   return(parents)
 }
@@ -2320,61 +1729,3 @@ neighborhood_selection_ges_dag = function(data){
   }
   return(mb)
 }
-
-
-
-f_1_score_exp = function(n,p, reps, cov_struc, vers,tests){
-  precision_vec = numeric(reps)
-  prec_list = list()
-  recall_vec = numeric(reps)
-  rec_list = list()
-  f1_vec = numeric(reps)
-  f1_list = list()
-  for(j in 1:length(tests)){
-    for(i in 1:reps){
-      print(i)
-      sig_2 = block_diag_sep(n = n, block_size = 5, struc_matrix = cov_struc)
-      omg.sq = rep(1, p)
-      vers = vers+1
-      B = gen.B(p = p, seed = vers)
-      sim_result_nplarge = sim_X_LUM(vers, p, n, omg.sq, sig = sig_2, b = B$b)
-      data = sim_result_nplarge$X
-      mb = neighborhood_selection_mxm(data = data, test = tests[j])
-      f1_score = get_F1(mb, B$b)
-      precision_vec[i] = f1_score[[1]]
-      recall_vec[i] = f1_score[[2]]
-      f1_vec[i] = f1_score[[3]]
-    }
-    prec_list[[j]] = mean(precision_vec)
-    rec_list[[j]] = mean(recall_vec)
-    f1_list[[j]] = mean(f1_vec)
-  }
-  return(list("precision" = prec_list, "recall" = rec_list, "f1" = f1_list))
-}
-
-
-# probit likelihood
-obtain_ll = function(test_data, beta_probit, beta_method){
-  test_data = test_data
-  beta_probit = beta_probit
-  beta_meth = beta_method
-  llk_sum_prob = 0
-  llk_sum_meth = 0
-  for(i in 1:ncol(test_data)){
-    #print(llk_sum_prob)
-    for(j in 1:nrow(test_data)){
-      if(pnorm(test_data[j,-i] %*% beta_probit[-i,i]) == 1){
-        #print(paste0("Here approximated: i = ", i, "j = ", j))
-        llk_sum_prob = llk_sum_prob + test_data[j,i]*log(1 - pnorm(-test_data[j,-i] %*% beta_probit[-i,i])) + (1 - test_data[j,i])*log(pnorm(-test_data[j,-i] %*% beta_probit[-i,i]))
-      }
-      else{
-        llk_sum_prob = llk_sum_prob + test_data[j,i]*log(pnorm(test_data[j,-i] %*% beta_probit[-i,i])) + (1 - test_data[j,i])*log(1 - pnorm(test_data[j,-i] %*% beta_probit[-i,i]))
-      }
-      llk_sum_meth = llk_sum_meth + test_data[j,i]*log(pnorm(test_data[j,-i] %*% beta_meth[-i,i])) + (1 - test_data[j,i])*log(1 - pnorm(test_data[j,-i] %*% beta_meth[-i,i]))
-    }
-  }
-  
-  return(list("probit" = llk_sum_prob, "method" = llk_sum_meth, "Method_normalized" = (llk_sum_meth - llk_sum_prob)/(nrow(test_data)*ncol(test_data))))
-}
-
-
